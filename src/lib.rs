@@ -7,13 +7,37 @@
 //! validation where these statements list the AS numbers that are allowed
 //! to originate routes for prefixes.
 //!
-//! This crate will eventually implement all functionality necessary to both
-//! produce and validate RPKI data. It currently implements everything
-//! necessary for validation and is slowly gaining the ability to produce
-//! objects as well.
+//! More information on RPKI in general can be found at the
+//! [RPKI Documentation Project](https://rpki.readthedocs.io/).
 //!
-//! Documentation for the items in this crate is currently somewhat sparse.
-//! This will be rectified in upcoming releases.
+//! This crate implements low-level functionality necessary to produce,
+//! collect, and validate RPKI data. It is not by itself enough to create an
+//! RPKI validator or an RPKI CA. For the former, you might want to have a
+//! look at [Routinator](https://github.com/NLnetLabs/routinator) which can
+//! be used as a library crate and form the basis for special-purpose RPKI
+//! relying party software.
+//!
+//! The crate consists of modules for all supported the PRKI objects:
+//!
+//! * resource certificates in [cert](cert/index.html),
+//! * certificate revocation lists (CRLs) in [crl](crl/index.html),
+//! * manifests in [manifest](manifest/index.html), and
+//! * ROAs [roa](roa/index.html).
+//!
+//! Manifests and ROAs are based on a profile of CMS signed data called a
+//! signed object which can be found in the [sigobj](sigobj/index.html)
+//! module.
+//!
+//! The crate currently does not support ghostbuster records and router
+//! certificates.
+//!
+//! Some additional modules are used by these objects such as
+//! [crypto](crypto/index.html) that provides all the signature-releated
+//! functionality or [x509](x509/index.html) with various things needed by
+//! certificates and CRLs.
+//!
+//! The [rrdp](rrdp/index.html) module provides the low-level functionality
+//! the RRDP protocol for distributing RPKI data.
 
 // We have seemingly redundant closures (i.e., closures where just providing
 // a function would also work) that cannot be removed due to lifetime issues.
