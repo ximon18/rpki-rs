@@ -238,7 +238,7 @@ impl SignedObject {
                             self.sid.encode_ref_as(Tag::CTX_0),
                             self.digest_algorithm.encode(), // digestAlgorithm
                             self.signed_attrs.encode_ref(), // signedAttrs
-                            self.signature.algorithm().cms_encode(),
+                            self.signature.algorithm().x509_encode(),
                                                         // signatureAlgorithm
                             OctetString::encode_slice( // signature
                                 self.signature.value().as_ref()
