@@ -1,6 +1,6 @@
 
 use bcder::encode;
-use bcder::{BitString, Captured, ConstOid, Mode, OctetString, Tag};
+use bcder::{BitString, Captured, ConstOid, Ia5String, Mode, OctetString, Tag};
 use bcder::encode::PrimitiveContent;
 use crate::crypto::{PublicKey, SignatureAlgorithm, Signer, SigningError};
 use crate::oid;
@@ -138,6 +138,9 @@ pub struct CertBuilder {
     /// Subject Information Access of type `id-ad-rpkiNotify`
     rpki_notify: Option<uri::Https>,
 
+    /// Additional SIAs.
+    additional_sias: Vec<(ConstOid, Ia5String)>,
+
     /// Certificate Policies
     ///
     /// This is chosen via the value of the overclaim mode,
@@ -182,6 +185,7 @@ impl CertBuilder {
             rpki_manifest: None,
             signed_object: None,
             rpki_notify: None,
+            additional_sias: Vec::new(),
             overclaim: Overclaim::Refuse,
             v4_resources: IpResourcesBuilder::new(),
             v6_resources: IpResourcesBuilder::new(),
@@ -229,6 +233,10 @@ impl CertBuilder {
     pub fn rpki_notify(&mut self, uri: uri::Https) -> &mut Self {
         self.rpki_notify = Some(uri);
         self
+    }
+
+    pub fn add_additional_sia(&mut self, oid: ConstOid, uri: Ia5String) {
+        self.additional_sias.push((oid, uri))
     }
 
     pub fn overclaim(&mut self, overclaim: Overclaim) -> &mut Self {
@@ -369,7 +377,7 @@ impl CertBuilder {
                     )
                 }),
 
-                // Authority Inforamtion Access
+                // Authority Information Access
                 self.authority_info_access.as_ref().map(|uri| {
                     extension(
                         &oid::PE_AUTHORITY_INFO_ACCESS, false,
@@ -409,7 +417,15 @@ impl CertBuilder {
                                 oid::AD_RPKI_NOTIFY.encode(),
                                 uri.encode_general_name()
                             ))
-                        })
+                        }),
+                        encode::iter(
+                            self.additional_sias.iter().map(|(oid, uri)| {
+                                encode::sequence((
+                                    oid.encode(),
+                                    uri.encode_ref_as(Tag::CTX_6)
+                                ))
+                            })
+                        )
                     ))
                 ),
 
