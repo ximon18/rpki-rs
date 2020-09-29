@@ -19,37 +19,31 @@
 
 pub use self::builder::CertBuilder;
 
-
 pub mod builder;
 pub mod ext;
 
-use std::{borrow, ops};
-use std::iter::FromIterator;
-use std::sync::Arc;
-use bcder::{decode, encode};
-use bcder::xerr;
-use bcder::encode::PrimitiveContent;
-use bcder::{
-    BitString, Captured, ConstOid, Ia5String, Mode, OctetString, Oid, Tag
-};
-use bytes::Bytes;
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
+use crate::crypto::{KeyIdentifier, PublicKey, SignatureAlgorithm, Signer, SigningError};
 use crate::oid;
+use crate::resources::{
+    AsBlock, AsBlocksBuilder, AsResources, AsResourcesBuilder, IpBlock, IpBlocksBuilder,
+    IpResources, IpResourcesBuilder,
+};
 use crate::resources::{AsBlocks, IpBlocks};
 use crate::tal::TalInfo;
 use crate::uri;
 use crate::x509::{
-    Name, SignedData, Serial, Time, Validity, ValidationError,
-    encode_extension, update_first, update_once
+    encode_extension, update_first, update_once, Name, Serial, SignedData, Time, ValidationError,
+    Validity,
 };
-use crate::crypto::{
-    KeyIdentifier, PublicKey, SignatureAlgorithm, Signer, SigningError
-};
-use crate::resources::{
-    AsBlock, AsBlocksBuilder, AsResources, AsResourcesBuilder,
-    IpBlock, IpBlocksBuilder, IpResources, IpResourcesBuilder
-};
-
+use bcder::encode::PrimitiveContent;
+use bcder::xerr;
+use bcder::{decode, encode};
+use bcder::{BitString, Captured, ConstOid, Ia5String, Mode, OctetString, Oid, Tag};
+use bytes::Bytes;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::iter::FromIterator;
+use std::sync::Arc;
+use std::{borrow, ops};
 
 //------------ Cert ----------------------------------------------------------
 
@@ -69,7 +63,7 @@ use crate::resources::{
 ///
 /// Finally, _TA certificates_ are the installed trust anchors. These are
 /// self-signed.
-/// 
+///
 /// If a certificate is stored in a file, you can use the [`decode`] function
 /// to parse the entire file. If the certificate is part of some other
 /// structure, the [`take_from`] and [`from_constructed`] functions can be
@@ -97,7 +91,6 @@ pub struct Cert {
     tbs: TbsCert,
 }
 
-
 /// # Decoding and Encoding
 ///
 impl Cert {
@@ -110,27 +103,26 @@ impl Cert {
     ///
     /// This function assumes that the certificate is encoded in the next
     /// constructed value in `cons` tagged as a sequence.
-    pub fn take_from<S: decode::Source>(
-        cons: &mut decode::Constructed<S>
-    ) -> Result<Self, S::Err> {
+    pub fn take_from<S: decode::Source>(cons: &mut decode::Constructed<S>) -> Result<Self, S::Err> {
         cons.take_sequence(Self::from_constructed)
     }
 
     /// Takes an optional certificate from the beginning of a value.
     pub fn take_opt_from<S: decode::Source>(
-        cons: &mut decode::Constructed<S>
+        cons: &mut decode::Constructed<S>,
     ) -> Result<Option<Self>, S::Err> {
         cons.take_opt_sequence(Self::from_constructed)
     }
 
     /// Parses the content of a Certificate sequence.
     pub fn from_constructed<S: decode::Source>(
-        cons: &mut decode::Constructed<S>
+        cons: &mut decode::Constructed<S>,
     ) -> Result<Self, S::Err> {
         let signed_data = SignedData::from_constructed(cons)?;
-        let tbs = signed_data.data().clone().decode(
-            TbsCert::from_constructed
-        )?;
+        let tbs = signed_data
+            .data()
+            .clone()
+            .decode(TbsCert::from_constructed)?;
         Ok(Self { signed_data, tbs })
     }
 
@@ -144,7 +136,6 @@ impl Cert {
         Captured::from_values(Mode::Der, self.encode_ref())
     }
 }
-
 
 /// # Validation
 ///
@@ -167,7 +158,7 @@ impl Cert {
 /// called _verification._ Methods are available to verify different kinds of
 /// certificates. They all have the verb _verify_ in their name and, in
 /// most cases, require access to the issuer certificate.
-/// 
+///
 /// In addition, methods are available to perform both steps at once for
 /// different kinds of certificates. These all have _validate_ in their name.
 impl Cert {
@@ -181,7 +172,7 @@ impl Cert {
     pub fn validate_ta(
         self,
         tal: Arc<TalInfo>,
-        strict: bool
+        strict: bool,
     ) -> Result<ResourceCert, ValidationError> {
         self.validate_ta_at(tal, strict, Time::now())
     }
@@ -205,7 +196,7 @@ impl Cert {
     pub fn validate_ca(
         self,
         issuer: &ResourceCert,
-        strict: bool
+        strict: bool,
     ) -> Result<ResourceCert, ValidationError> {
         self.validate_ca_at(issuer, strict, Time::now())
     }
@@ -229,8 +220,8 @@ impl Cert {
     pub fn validate_ee(
         self,
         issuer: &ResourceCert,
-        strict: bool
-    ) -> Result<ResourceCert, ValidationError>  {
+        strict: bool,
+    ) -> Result<ResourceCert, ValidationError> {
         self.validate_ee_at(issuer, strict, Time::now())
     }
 
@@ -239,7 +230,7 @@ impl Cert {
         issuer: &ResourceCert,
         strict: bool,
         now: Time,
-    ) -> Result<ResourceCert, ValidationError>  {
+    ) -> Result<ResourceCert, ValidationError> {
         self.inspect_ee_at(strict, now)?;
         self.verify_ee(issuer, strict)
     }
@@ -247,8 +238,8 @@ impl Cert {
     pub fn validate_detached_ee(
         self,
         issuer: &ResourceCert,
-        strict: bool
-    ) -> Result<ResourceCert, ValidationError>  {
+        strict: bool,
+    ) -> Result<ResourceCert, ValidationError> {
         self.validate_detached_ee_at(issuer, strict, Time::now())
     }
 
@@ -257,11 +248,10 @@ impl Cert {
         issuer: &ResourceCert,
         strict: bool,
         now: Time,
-    ) -> Result<ResourceCert, ValidationError>  {
+    ) -> Result<ResourceCert, ValidationError> {
         self.inspect_detached_ee_at(strict, now)?;
         self.verify_ee(issuer, strict)
     }
-
 
     //--- Inspection
 
@@ -269,11 +259,7 @@ impl Cert {
         self.inspect_ta_at(strict, Time::now())
     }
 
-    pub fn inspect_ta_at(
-        &self,
-        strict: bool,
-        now: Time
-    ) -> Result<(), ValidationError> {
+    pub fn inspect_ta_at(&self, strict: bool, now: Time) -> Result<(), ValidationError> {
         self.inspect_basics(strict, now)?;
         self.inspect_ca_basics(strict)?;
 
@@ -287,19 +273,19 @@ impl Cert {
 
         // 4.8.6. CRL Distribution Points. There musn’t be one.
         if self.crl_uri.is_some() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         // 4.8.7. Authority Information Access. Must not be present.
         if self.ca_issuer.is_some() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         // 4.8.10. IP Resources.
         // 4.8.11. AS Resources.
         //
         // Are checked as part of verification.
-        
+
         Ok(())
     }
 
@@ -307,9 +293,7 @@ impl Cert {
         self.inspect_ca_at(strict, Time::now())
     }
 
-    pub fn inspect_ca_at(
-        &self, strict: bool, now: Time
-    ) -> Result<(), ValidationError> {
+    pub fn inspect_ca_at(&self, strict: bool, now: Time) -> Result<(), ValidationError> {
         self.inspect_basics(strict, now)?;
         self.inspect_ca_basics(strict)?;
         self.inspect_issued(strict)
@@ -319,14 +303,12 @@ impl Cert {
         self.inspect_ee_at(strict, Time::now())
     }
 
-    pub fn inspect_ee_at(
-        &self, strict: bool, now: Time
-    ) -> Result<(), ValidationError> {
+    pub fn inspect_ee_at(&self, strict: bool, now: Time) -> Result<(), ValidationError> {
         self.inspect_basics(strict, now)?;
         self.inspect_issued(strict)?;
 
         // 4.8.1. Basic Constraints: Must not be present.
-        if self.basic_ca.is_some(){
+        if self.basic_ca.is_some() {
             xerr!(return Err(ValidationError))
         }
 
@@ -338,7 +320,8 @@ impl Cert {
 
         // 4.8.8.  Subject Information Access. We need the signed object
         // but not the other ones.
-        if self.ca_repository.is_some() || self.rpki_manifest.is_some()
+        if self.ca_repository.is_some()
+            || self.rpki_manifest.is_some()
             || self.signed_object.is_none()
         {
             xerr!(return Err(ValidationError))
@@ -347,20 +330,16 @@ impl Cert {
         Ok(())
     }
 
-    pub fn inspect_detached_ee(
-        &self, strict: bool
-    ) -> Result<(), ValidationError> {
+    pub fn inspect_detached_ee(&self, strict: bool) -> Result<(), ValidationError> {
         self.inspect_detached_ee_at(strict, Time::now())
     }
 
-    pub fn inspect_detached_ee_at(
-        &self, strict: bool, now: Time
-    ) -> Result<(), ValidationError> {
+    pub fn inspect_detached_ee_at(&self, strict: bool, now: Time) -> Result<(), ValidationError> {
         self.inspect_basics(strict, now)?;
         self.inspect_issued(strict)?;
 
         // 4.8.1. Basic Constraints: Must not be present.
-        if self.basic_ca.is_some(){
+        if self.basic_ca.is_some() {
             xerr!(return Err(ValidationError))
         }
 
@@ -379,66 +358,58 @@ impl Cert {
         Ok(())
     }
 
-
     //--- Verification
 
     pub fn verify_ta(
-        self, tal: Arc<TalInfo>, _strict: bool
+        self,
+        tal: Arc<TalInfo>,
+        _strict: bool,
     ) -> Result<ResourceCert, ValidationError> {
         // 4.8.10. IP Resources. If present, musn’t be "inherit".
-        let v4_resources = IpBlocks::from_resources(
-            self.v4_resources.clone()
-        )?;
-        let v6_resources = IpBlocks::from_resources(
-            self.v6_resources.clone()
-        )?;
- 
+        let v4_resources = IpBlocks::from_resources(self.v4_resources.clone())?;
+        let v6_resources = IpBlocks::from_resources(self.v6_resources.clone())?;
+
         // 4.8.11.  AS Resources. If present, musn’t be "inherit". That
         // IP resources (logical) or AS resources are present has already
         // been checked during parsing.
-        let as_resources = AsBlocks::from_resources(
-            self.as_resources.clone()
-        )?;
+        let as_resources = AsBlocks::from_resources(self.as_resources.clone())?;
 
-        self.signed_data.verify_signature(
-            &self.subject_public_key_info
-        )?;
+        self.signed_data
+            .verify_signature(&self.subject_public_key_info)?;
 
         Ok(ResourceCert {
             cert: self,
             v4_resources,
             v6_resources,
             as_resources,
-            tal
+            tal,
         })
     }
 
-    pub fn verify_ta_ref(
-        &self, _strict: bool
-    ) -> Result<(), ValidationError> {
+    pub fn verify_ta_ref(&self, _strict: bool) -> Result<(), ValidationError> {
         // 4.8.10. IP Resources. If present, musn’t be "inherit".
         if self.v4_resources.is_inherited() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
         if self.v6_resources.is_inherited() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         // 4.8.11.  AS Resources. If present, musn’t be "inherit".
         if self.as_resources.is_inherited() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
-        self.signed_data.verify_signature(
-            &self.subject_public_key_info
-        )?;
+        self.signed_data
+            .verify_signature(&self.subject_public_key_info)?;
 
         Ok(())
     }
 
-
     pub fn verify_ca(
-        self, issuer: &ResourceCert, strict: bool
+        self,
+        issuer: &ResourceCert,
+        strict: bool,
     ) -> Result<ResourceCert, ValidationError> {
         self.verify_issuer_claim(issuer, strict)?;
         self.verify_signature(issuer, strict)?;
@@ -446,22 +417,19 @@ impl Cert {
     }
 
     pub fn verify_ee(
-        self, issuer: &ResourceCert, strict: bool
+        self,
+        issuer: &ResourceCert,
+        strict: bool,
     ) -> Result<ResourceCert, ValidationError> {
         self.verify_issuer_claim(issuer, strict)?;
         self.verify_signature(issuer, strict)?;
         self.verify_resources(issuer, strict)
     }
 
-
     //--- Validation Components
 
     /// Inspects basic compliance with section 4 of RFC 6487.
-    fn inspect_basics(
-        &self,
-        strict: bool,
-        now: Time
-    ) -> Result<(), ValidationError> {
+    fn inspect_basics(&self, strict: bool, now: Time) -> Result<(), ValidationError> {
         // The following lists all such constraints in the RFC, noting those
         // that we cannot check here.
 
@@ -474,15 +442,15 @@ impl Cert {
         // However, RFC 5280 demands that the two mentions of the signature
         // algorithm are the same. So we do that here.
         if self.signature != self.signed_data.signature().algorithm() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
-        // 4.4 Issuer: must have certain format. 
+        // 4.4 Issuer: must have certain format.
         Name::validate_rpki(&self.issuer, strict)?;
 
         // 4.5 Subject: same as 4.4.
         Name::validate_rpki(&self.subject, strict)?;
-        
+
         // 4.6 Validity. Check according to RFC 5280.
         self.validity.validate_at(now)?;
 
@@ -491,12 +459,11 @@ impl Cert {
 
         // 4.8.1. Basic Constraints. Differing requirements for CA and EE
         // certificates.
-        
+
         // 4.8.2. Subject Key Identifer. Must be the SHA-1 hash of the octets
         // of the subjectPublicKey.
-        if self.subject_key_identifier() != 
-                             self.subject_public_key_info().key_identifier() {
-            return Err(ValidationError)
+        if self.subject_key_identifier() != self.subject_public_key_info().key_identifier() {
+            return Err(ValidationError);
         }
 
         // 4.8.3. Authority Key Identifier. Differing requirements of TA and
@@ -507,7 +474,7 @@ impl Cert {
         // 4.8.5. Extended Key Usage. Must not be present for the kind of
         // certificates we use here.
         if self.extended_key_usage().is_some() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         // 4.8.6. CRL Distribution Points. Differs between TA and other
@@ -524,7 +491,7 @@ impl Cert {
 
         // 4.8.10.  IP Resources. Differs between trust anchor and issued
         // certificates.
-        
+
         // 4.8.11.  AS Resources. Differs between trust anchor and issued
         // certificates.
 
@@ -534,7 +501,7 @@ impl Cert {
     fn inspect_issued(&self, _strict: bool) -> Result<(), ValidationError> {
         // 4.8.6. CRL Distribution Points. There must be one.
         if self.crl_uri().is_none() {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         Ok(())
@@ -544,27 +511,25 @@ impl Cert {
     ///
     /// Checks the parts that are common in normal and trust anchor CA
     /// certificates.
-    fn inspect_ca_basics(
-        &self,
-        _strict: bool
-    ) -> Result<(), ValidationError> {
+    fn inspect_ca_basics(&self, _strict: bool) -> Result<(), ValidationError> {
         // 4.8.1. Basic Constraints: For a CA it must be present (RFC6487)
         // und the “cA” flag must be set (RFC5280).
         if self.basic_ca() != Some(true) {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         // 4.8.4. Key Usage. Bits for CA or not CA have been checked during
         // parsing already.
         if self.key_usage() != KeyUsage::Ca {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         // 4.8.8.  Subject Information Access.
-        if self.ca_repository().is_none() || self.rpki_manifest().is_none()
+        if self.ca_repository().is_none()
+            || self.rpki_manifest().is_none()
             || self.signed_object().is_some()
         {
-            return Err(ValidationError)
+            return Err(ValidationError);
         }
 
         Ok(())
@@ -581,10 +546,8 @@ impl Cert {
     ) -> Result<(), ValidationError> {
         // 4.8.3. Authority Key Identifier. Must be present and match the
         // subject key ID of `issuer`.
-        if self.authority_key_identifier()
-            != Some(issuer.cert.subject_key_identifier())
-        {
-            return Err(ValidationError)
+        if self.authority_key_identifier() != Some(issuer.cert.subject_key_identifier()) {
+            return Err(ValidationError);
         }
 
         // 4.8.7. Authority Information Access. Must be present and contain
@@ -599,14 +562,9 @@ impl Cert {
     }
 
     /// Validates the certificate’s signature.
-    pub fn verify_signature(
-        &self,
-        issuer: &Cert,
-        _strict: bool
-    ) -> Result<(), ValidationError> {
-        self.signed_data.verify_signature(
-            issuer.subject_public_key_info()
-        )
+    pub fn verify_signature(&self, issuer: &Cert, _strict: bool) -> Result<(), ValidationError> {
+        self.signed_data
+            .verify_signature(issuer.subject_public_key_info())
     }
 
     /// Validates and extracts the IP and AS resources.
@@ -615,28 +573,27 @@ impl Cert {
     fn verify_resources(
         self,
         issuer: &ResourceCert,
-        _strict: bool
+        _strict: bool,
     ) -> Result<ResourceCert, ValidationError> {
         Ok(ResourceCert {
             // 4.8.10.  IP Resources. If present, must be encompassed by or
             // trimmed down to the issuer certificate.
-            v4_resources: issuer.v4_resources.validate_issued(
-                self.v4_resources(), self.overclaim
-            )?,
-            v6_resources: issuer.v6_resources.validate_issued(
-                self.v6_resources(), self.overclaim
-            )?,
+            v4_resources: issuer
+                .v4_resources
+                .validate_issued(self.v4_resources(), self.overclaim)?,
+            v6_resources: issuer
+                .v6_resources
+                .validate_issued(self.v6_resources(), self.overclaim)?,
             // 4.8.11.  AS Resources. If present, must be encompassed by or
             // trimmed down to the issuer.
-            as_resources: issuer.as_resources.validate_issued(
-                self.as_resources(), self.overclaim()
-            )?,
+            as_resources: issuer
+                .as_resources
+                .validate_issued(self.as_resources(), self.overclaim())?,
             cert: self,
             tal: issuer.tal.clone(),
         })
     }
 }
-
 
 //--- Deref, AsRef, and Borrow
 
@@ -666,11 +623,13 @@ impl borrow::Borrow<TbsCert> for Cert {
     }
 }
 
-
 //--- Deserialize and Serialize
 
 impl Serialize for Cert {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         let bytes = self.to_captured().into_bytes();
         let b64 = base64::encode(&bytes);
         b64.serialize(serializer)
@@ -678,7 +637,10 @@ impl Serialize for Cert {
 }
 
 impl<'de> Deserialize<'de> for Cert {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         use serde::de;
 
         let string = String::deserialize(deserializer)?;
@@ -687,7 +649,6 @@ impl<'de> Deserialize<'de> for Cert {
         Cert::decode(bytes).map_err(de::Error::custom)
     }
 }
-
 
 //------------ TbsCert -------------------------------------------------------
 
@@ -742,7 +703,6 @@ pub struct TbsCert {
     // rsync or HTTPS URI but may contain more. We only support those primary
     // URIs for now, so we don’t keep the full list but only the one URI we
     // need.
-
     /// CRL Distribution Points.
     crl_uri: Option<uri::Rsync>,
 
@@ -760,6 +720,9 @@ pub struct TbsCert {
 
     /// Subject Information Access of type `id-ad-rpkiNotify`
     rpki_notify: Option<uri::Https>,
+
+    /// Additional SIAs.
+    additional_sias: Vec<(ConstOid, Ia5String)>,
 
     /// Certificate Policies
     ///
@@ -780,7 +743,6 @@ pub struct TbsCert {
     as_resources: AsResources,
 }
 
-
 /// # Creation and Conversion
 ///
 impl TbsCert {
@@ -800,14 +762,8 @@ impl TbsCert {
             signature: SignatureAlgorithm::default(),
             issuer,
             validity,
-            subject: {
-                subject.unwrap_or_else(||
-                    subject_public_key_info.to_subject_name()
-                )
-            },
-            subject_key_identifier: {
-                KeyIdentifier::from_public_key(&subject_public_key_info)
-            },
+            subject: { subject.unwrap_or_else(|| subject_public_key_info.to_subject_name()) },
+            subject_key_identifier: { KeyIdentifier::from_public_key(&subject_public_key_info) },
             subject_public_key_info,
             basic_ca: None,
             authority_key_identifier: None,
@@ -819,6 +775,7 @@ impl TbsCert {
             rpki_manifest: None,
             signed_object: None,
             rpki_notify: None,
+            additional_sias: vec![],
             overclaim,
             v4_resources: IpResources::missing(),
             v6_resources: IpResources::missing(),
@@ -836,11 +793,10 @@ impl TbsCert {
         let signature = signer.sign(key, self.signature, &data)?;
         Ok(Cert {
             signed_data: SignedData::new(data, signature),
-            tbs: self
+            tbs: self,
         })
     }
 }
-
 
 /// # Data Access
 ///
@@ -929,10 +885,7 @@ impl TbsCert {
     }
 
     /// Sets the authority key identifier extension.
-    pub fn set_authority_key_identifier(
-        &mut self,
-        id: Option<KeyIdentifier>
-    ) {
+    pub fn set_authority_key_identifier(&mut self, id: Option<KeyIdentifier>) {
         self.authority_key_identifier = id
     }
 
@@ -971,7 +924,7 @@ impl TbsCert {
 
     /// Sets the *caIssuer* AIA rsync URI.
     pub fn set_ca_issuer(&mut self, uri: Option<uri::Rsync>) {
-        self.ca_issuer= uri
+        self.ca_issuer = uri
     }
 
     /// Returns a reference to the *caRepository* SIA rsync URI if present.
@@ -1014,6 +967,11 @@ impl TbsCert {
         self.rpki_notify = uri
     }
 
+    /// Add an arbitrary SIA
+    pub fn add_additional_sia(&mut self, oid: ConstOid, uri: Ia5String) {
+        self.additional_sias.push((oid, uri))
+    }
+
     /// Returns the overclaim mode of the certificate.
     pub fn overclaim(&self) -> Overclaim {
         self.overclaim
@@ -1041,7 +999,9 @@ impl TbsCert {
 
     /// Builds the blocks IPv4 address resources.
     pub fn build_v4_resource_blocks<F>(&mut self, op: F)
-    where F: FnOnce(&mut IpBlocksBuilder) {
+    where
+        F: FnOnce(&mut IpBlocksBuilder),
+    {
         let mut builder = IpResourcesBuilder::new();
         builder.blocks(op);
         self.set_v4_resources(builder.finalize())
@@ -1049,7 +1009,9 @@ impl TbsCert {
 
     /// Builds the IPv4 address resources from an iterator over blocks.
     pub fn v4_resources_from_iter<I>(&mut self, iter: I)
-    where I: IntoIterator<Item=IpBlock> {
+    where
+        I: IntoIterator<Item = IpBlock>,
+    {
         self.v4_resources = IpResources::blocks(IpBlocks::from_iter(iter))
     }
 
@@ -1070,7 +1032,9 @@ impl TbsCert {
 
     /// Builds the blocks IPv6 address resources.
     pub fn build_v6_resource_blocks<F>(&mut self, op: F)
-    where F: FnOnce(&mut IpBlocksBuilder) {
+    where
+        F: FnOnce(&mut IpBlocksBuilder),
+    {
         let mut builder = IpResourcesBuilder::new();
         builder.blocks(op);
         self.set_v6_resources(builder.finalize())
@@ -1078,7 +1042,9 @@ impl TbsCert {
 
     /// Builds the IPv6 address resources from an iterator over blocks
     pub fn v6_resources_from_iter<I>(&mut self, iter: I)
-    where I: IntoIterator<Item=IpBlock> {
+    where
+        I: IntoIterator<Item = IpBlock>,
+    {
         self.v6_resources = IpResources::blocks(IpBlocks::from_iter(iter))
     }
 
@@ -1104,7 +1070,9 @@ impl TbsCert {
 
     /// Builds the blocks AS resources.
     pub fn build_as_resource_blocks<F>(&mut self, op: F)
-    where F: FnOnce(&mut AsBlocksBuilder) {
+    where
+        F: FnOnce(&mut AsBlocksBuilder),
+    {
         let mut builder = AsResourcesBuilder::new();
         builder.blocks(op);
         self.set_as_resources(builder.finalize())
@@ -1112,18 +1080,19 @@ impl TbsCert {
 
     /// Builds the AS resources from an iterator over blocks.
     pub fn as_resources_from_iter<I>(&mut self, iter: I)
-    where I: IntoIterator<Item = AsBlock> {
+    where
+        I: IntoIterator<Item = AsBlock>,
+    {
         self.as_resources = AsResources::blocks(AsBlocks::from_iter(iter))
     }
 }
-
 
 /// # Decoding and Encoding
 ///
 impl TbsCert {
     /// Parses the content of a Certificate sequence.
     pub fn from_constructed<S: decode::Source>(
-        cons: &mut decode::Constructed<S>
+        cons: &mut decode::Constructed<S>,
     ) -> Result<Self, S::Err> {
         cons.take_sequence(|cons| {
             // version [0] EXPLICIT Version DEFAULT v1.
@@ -1155,67 +1124,51 @@ impl TbsCert {
             let mut as_resources = None;
             let mut as_overclaim = None;
 
-            cons.take_constructed_if(Tag::CTX_3, |c| c.take_sequence(|cons| {
-                while let Some(()) = cons.take_opt_sequence(|cons| {
-                    let id = Oid::take_from(cons)?;
-                    let critical = cons.take_opt_bool()?.unwrap_or(false);
-                    let value = OctetString::take_from(cons)?;
-                    Mode::Der.decode(value.to_source(), |content| {
-                        if id == oid::CE_BASIC_CONSTRAINTS {
-                            Self::take_basic_constraints(
-                                content, &mut basic_ca
-                            )
-                        } else if id == oid::CE_SUBJECT_KEY_IDENTIFIER {
-                            Self::take_subject_key_identifier(
-                                content, &mut subject_key_id
-                            )
-                        } else if id == oid::CE_AUTHORITY_KEY_IDENTIFIER {
-                            Self::take_authority_key_identifier(
-                                content, &mut authority_key_id
-                            )
-                        } else if id == oid::CE_KEY_USAGE {
-                            Self::take_key_usage(
-                                content, &mut key_usage
-                            )
-                        } else if id == oid::CE_EXTENDED_KEY_USAGE {
-                            Self::take_extended_key_usage(
-                                content, &mut extended_key_usage
-                            )
-                        } else if id == oid::CE_CRL_DISTRIBUTION_POINTS {
-                            Self::take_crl_distribution_points(
-                                content, &mut crl_uri
-                            )
-                        } else if id == oid::PE_AUTHORITY_INFO_ACCESS {
-                            Self::take_authority_info_access(
-                                content, &mut ca_issuer
-                            )
-                        } else if id == oid::PE_SUBJECT_INFO_ACCESS {
-                            Self::take_subject_info_access(
-                                content, &mut sia
-                            )
-                        } else if id == oid::CE_CERTIFICATE_POLICIES {
-                            Self::take_certificate_policies(
-                                content, &mut overclaim
-                            )
-                        } else if let Some(m) = Overclaim::from_ip_res(&id) {
-                            ip_overclaim = Some(m);
-                            Self::take_ip_resources(content, &mut ip_resources)
-                        } else if let Some(m) = Overclaim::from_as_res(&id) {
-                            as_overclaim = Some(m);
-                            Self::take_as_resources(content, &mut as_resources)
-                        } else if critical {
-                            xerr!(Err(decode::Malformed))
-                        } else {
-                            // RFC 5280 says we can ignore non-critical
-                            // extensions we don’t know of. RFC 6487
-                            // agrees. So let’s do that.
-                            Ok(())
-                        }
-                    })?;
+            cons.take_constructed_if(Tag::CTX_3, |c| {
+                c.take_sequence(|cons| {
+                    while let Some(()) = cons.take_opt_sequence(|cons| {
+                        let id = Oid::take_from(cons)?;
+                        let critical = cons.take_opt_bool()?.unwrap_or(false);
+                        let value = OctetString::take_from(cons)?;
+                        Mode::Der.decode(value.to_source(), |content| {
+                            if id == oid::CE_BASIC_CONSTRAINTS {
+                                Self::take_basic_constraints(content, &mut basic_ca)
+                            } else if id == oid::CE_SUBJECT_KEY_IDENTIFIER {
+                                Self::take_subject_key_identifier(content, &mut subject_key_id)
+                            } else if id == oid::CE_AUTHORITY_KEY_IDENTIFIER {
+                                Self::take_authority_key_identifier(content, &mut authority_key_id)
+                            } else if id == oid::CE_KEY_USAGE {
+                                Self::take_key_usage(content, &mut key_usage)
+                            } else if id == oid::CE_EXTENDED_KEY_USAGE {
+                                Self::take_extended_key_usage(content, &mut extended_key_usage)
+                            } else if id == oid::CE_CRL_DISTRIBUTION_POINTS {
+                                Self::take_crl_distribution_points(content, &mut crl_uri)
+                            } else if id == oid::PE_AUTHORITY_INFO_ACCESS {
+                                Self::take_authority_info_access(content, &mut ca_issuer)
+                            } else if id == oid::PE_SUBJECT_INFO_ACCESS {
+                                Self::take_subject_info_access(content, &mut sia)
+                            } else if id == oid::CE_CERTIFICATE_POLICIES {
+                                Self::take_certificate_policies(content, &mut overclaim)
+                            } else if let Some(m) = Overclaim::from_ip_res(&id) {
+                                ip_overclaim = Some(m);
+                                Self::take_ip_resources(content, &mut ip_resources)
+                            } else if let Some(m) = Overclaim::from_as_res(&id) {
+                                as_overclaim = Some(m);
+                                Self::take_as_resources(content, &mut as_resources)
+                            } else if critical {
+                                xerr!(Err(decode::Malformed))
+                            } else {
+                                // RFC 5280 says we can ignore non-critical
+                                // extensions we don’t know of. RFC 6487
+                                // agrees. So let’s do that.
+                                Ok(())
+                            }
+                        })?;
+                        Ok(())
+                    })? {}
                     Ok(())
-                })? { }
-                Ok(())
-            }))?;
+                })
+            })?;
 
             if ip_resources.is_none() && as_resources.is_none() {
                 xerr!(return Err(decode::Malformed.into()))
@@ -1228,15 +1181,17 @@ impl TbsCert {
             }
             let (v4_resources, v6_resources) = match ip_resources {
                 Some(res) => res,
-                None => (None, None)
+                None => (None, None),
             };
             let (ca_repository, rpki_manifest, signed_object, rpki_notify) = {
                 match sia {
                     Some(sia) => (
-                        sia.ca_repository, sia.rpki_manifest,
-                        sia.signed_object, sia.rpki_notify
+                        sia.ca_repository,
+                        sia.rpki_manifest,
+                        sia.signed_object,
+                        sia.rpki_notify,
                     ),
-                    None => (None, None, None, None)
+                    None => (None, None, None, None),
                 }
             };
 
@@ -1248,8 +1203,7 @@ impl TbsCert {
                 subject,
                 subject_public_key_info,
                 basic_ca,
-                subject_key_identifier:
-                    subject_key_id.ok_or(decode::Malformed)?,
+                subject_key_identifier: subject_key_id.ok_or(decode::Malformed)?,
                 authority_key_identifier: authority_key_id,
                 key_usage: key_usage.ok_or(decode::Malformed)?,
                 extended_key_usage,
@@ -1257,18 +1211,13 @@ impl TbsCert {
                 ca_issuer,
                 ca_repository,
                 rpki_manifest,
+                additional_sias: vec![],
                 signed_object,
                 rpki_notify,
                 overclaim: overclaim.ok_or(decode::Malformed)?,
-                v4_resources: v4_resources.unwrap_or_else(
-                    IpResources::missing
-                ),
-                v6_resources: v6_resources.unwrap_or_else(
-                    IpResources::missing
-                ),
-                as_resources: as_resources.unwrap_or_else(
-                    AsResources::missing
-                ),
+                v4_resources: v4_resources.unwrap_or_else(IpResources::missing),
+                v6_resources: v6_resources.unwrap_or_else(IpResources::missing),
+                as_resources: as_resources.unwrap_or_else(AsResources::missing),
             })
         })
     }
@@ -1335,9 +1284,7 @@ impl TbsCert {
         authority_key_id: &mut Option<KeyIdentifier>,
     ) -> Result<(), S::Err> {
         update_once(authority_key_id, || {
-            cons.take_sequence(|cons| {
-                cons.take_value_if(Tag::CTX_0, KeyIdentifier::from_content)
-            })
+            cons.take_sequence(|cons| cons.take_value_if(Tag::CTX_0, KeyIdentifier::from_content))
         })
     }
 
@@ -1361,17 +1308,15 @@ impl TbsCert {
     /// set.
     pub(crate) fn take_key_usage<S: decode::Source>(
         cons: &mut decode::Constructed<S>,
-        key_usage: &mut Option<KeyUsage>
+        key_usage: &mut Option<KeyUsage>,
     ) -> Result<(), S::Err> {
         update_once(key_usage, || {
             let bits = BitString::take_from(cons)?;
             if bits.bit(5) && bits.bit(6) {
                 Ok(KeyUsage::Ca)
-            }
-            else if bits.bit(0) {
+            } else if bits.bit(0) {
                 Ok(KeyUsage::Ee)
-            }
-            else {
+            } else {
                 Err(decode::Malformed.into())
             }
         })
@@ -1387,15 +1332,17 @@ impl TbsCert {
     /// May only be present in EE certificates issued to devices.
     pub(crate) fn take_extended_key_usage<S: decode::Source>(
         cons: &mut decode::Constructed<S>,
-        extended_key_usage: &mut Option<Captured>
+        extended_key_usage: &mut Option<Captured>,
     ) -> Result<(), S::Err> {
         update_once(extended_key_usage, || {
             let res = cons.take_sequence(|c| c.capture_all())?;
-            res.clone().decode(|cons| {
-                Oid::skip_in(cons)?;
-                while Oid::skip_opt_in(cons)?.is_some() { }
-                Ok(res)
-            }).map_err(Into::into)
+            res.clone()
+                .decode(|cons| {
+                    Oid::skip_in(cons)?;
+                    while Oid::skip_opt_in(cons)?.is_some() {}
+                    Ok(res)
+                })
+                .map_err(Into::into)
         })
     }
 
@@ -1422,7 +1369,7 @@ impl TbsCert {
     /// choices.
     fn take_crl_distribution_points<S: decode::Source>(
         cons: &mut decode::Constructed<S>,
-        crl_uri: &mut Option<uri::Rsync>
+        crl_uri: &mut Option<uri::Rsync>,
     ) -> Result<(), S::Err> {
         update_once(crl_uri, || {
             // CRLDistributionPoints
@@ -1434,9 +1381,7 @@ impl TbsCert {
                         // fullName
                         cons.take_constructed_if(Tag::CTX_0, |cons| {
                             // GeneralNames content
-                            take_general_names_content(
-                                cons, uri::Rsync::from_bytes
-                            )
+                            take_general_names_content(cons, uri::Rsync::from_bytes)
                         })
                     })
                 })
@@ -1461,7 +1406,7 @@ impl TbsCert {
     /// support the one, though, so we’ll ignore the rest.
     fn take_authority_info_access<S: decode::Source>(
         cons: &mut decode::Constructed<S>,
-        ca_issuer: &mut Option<uri::Rsync>
+        ca_issuer: &mut Option<uri::Rsync>,
     ) -> Result<(), S::Err> {
         update_once(ca_issuer, || {
             cons.take_sequence(|cons| {
@@ -1510,40 +1455,28 @@ impl TbsCert {
                     let oid = Oid::take_from(cons)?;
                     if oid == oid::AD_CA_REPOSITORY {
                         update_first(&mut sia.ca_repository, || {
-                            take_general_name(
-                                cons, uri::Rsync::from_bytes
-                            )
+                            take_general_name(cons, uri::Rsync::from_bytes)
                         })
-                    }
-                    else if oid == oid::AD_RPKI_MANIFEST {
+                    } else if oid == oid::AD_RPKI_MANIFEST {
                         update_first(&mut sia.rpki_manifest, || {
-                            take_general_name(
-                                cons, uri::Rsync::from_bytes
-                            )
+                            take_general_name(cons, uri::Rsync::from_bytes)
                         })
-                    }
-                    else if oid == oid::AD_SIGNED_OBJECT {
+                    } else if oid == oid::AD_SIGNED_OBJECT {
                         update_first(&mut sia.signed_object, || {
-                            take_general_name(
-                                cons, uri::Rsync::from_bytes
-                            )
+                            take_general_name(cons, uri::Rsync::from_bytes)
                         })
-                    }
-                    else if oid == oid::AD_RPKI_NOTIFY {
+                    } else if oid == oid::AD_RPKI_NOTIFY {
                         update_first(&mut sia.rpki_notify, || {
-                            take_general_name(
-                                cons, uri::Https::from_bytes
-                            )
+                            take_general_name(cons, uri::Https::from_bytes)
                         })
-                    }
-                    else {
+                    } else {
                         others_seen = true;
                         // XXX Presumably it is fine to just skip over these
                         //     things. Since this is DER, it can’t be tricked
                         //     into reading forever.
                         cons.skip_all()
                     }
-                })? { }
+                })? {}
                 Ok(())
             })?;
             Ok(sia)
@@ -1589,7 +1522,7 @@ impl TbsCert {
     /// Parses the IP Resources extension.
     fn take_ip_resources<S: decode::Source>(
         cons: &mut decode::Constructed<S>,
-        ip_resources: &mut Option<(Option<IpResources>, Option<IpResources>)>
+        ip_resources: &mut Option<(Option<IpResources>, Option<IpResources>)>,
     ) -> Result<(), S::Err> {
         update_once(ip_resources, || IpResources::take_families_from(cons))
     }
@@ -1597,11 +1530,9 @@ impl TbsCert {
     /// Parses the AS Resources extension.
     fn take_as_resources<S: decode::Source>(
         cons: &mut decode::Constructed<S>,
-        as_resources: &mut Option<AsResources>
+        as_resources: &mut Option<AsResources>,
     ) -> Result<(), S::Err> {
-        update_once(as_resources, || {
-            AsResources::take_from(cons)
-        })
+        update_once(as_resources, || AsResources::take_from(cons))
     }
 
     /// Returns an encoder for the value.
@@ -1617,135 +1548,127 @@ impl TbsCert {
             // no issuerUniqueID
             // no subjetUniqueID
             // extensions
-            encode::sequence_as(Tag::CTX_3, encode::sequence((
-                // Basic Constraints
-                self.basic_ca.map(|ca| {
-                    encode_extension(
-                        &oid::CE_BASIC_CONSTRAINTS, true,
-                        encode::sequence(
-                            if ca {
-                                Some(ca.encode())
-                            }
-                            else {
-                                None
-                            }
+            encode::sequence_as(
+                Tag::CTX_3,
+                encode::sequence((
+                    // Basic Constraints
+                    self.basic_ca.map(|ca| {
+                        encode_extension(
+                            &oid::CE_BASIC_CONSTRAINTS,
+                            true,
+                            encode::sequence(if ca { Some(ca.encode()) } else { None }),
                         )
-                    )
-                }),
-
-                // Subject Key Identifier
-                encode_extension(
-                    &oid::CE_SUBJECT_KEY_IDENTIFIER, false,
-                    self.subject_key_identifier.encode_ref(),
-                ),
-
-                // Authority Key Identifier
-                self.authority_key_identifier.as_ref().map(|id| {
+                    }),
+                    // Subject Key Identifier
                     encode_extension(
-                        &oid::CE_AUTHORITY_KEY_IDENTIFIER, false,
-                        encode::sequence(id.encode_ref_as(Tag::CTX_0))
-                    )
-                }),
-
-                // Key Usage
-                encode_extension(
-                    &oid::CE_KEY_USAGE, true,
-                    self.key_usage.encode()
-                ),
-
-                // Extended Key Usage
-                self.extended_key_usage.as_ref().map(|captured| {
-                    encode_extension(
-                        &oid::CE_EXTENDED_KEY_USAGE, false,
-                        encode::sequence(captured)
-                    )
-                }),
-
-                // CRL Distribution Points
-                self.crl_uri.as_ref().map(|uri| {
-                    encode_extension(
-                        &oid::CE_CRL_DISTRIBUTION_POINTS, false,
-                        encode::sequence( // CRLDistributionPoints
-                            encode::sequence( // DistributionPoint
-                                encode::sequence_as(Tag::CTX_0, // distrib.Pt.
-                                    encode::sequence_as(Tag::CTX_0, // fullName
-                                        uri.encode_general_name()
-                                    )
-                                )
-                            )
+                        &oid::CE_SUBJECT_KEY_IDENTIFIER,
+                        false,
+                        self.subject_key_identifier.encode_ref(),
+                    ),
+                    // Authority Key Identifier
+                    self.authority_key_identifier.as_ref().map(|id| {
+                        encode_extension(
+                            &oid::CE_AUTHORITY_KEY_IDENTIFIER,
+                            false,
+                            encode::sequence(id.encode_ref_as(Tag::CTX_0)),
                         )
-                    )
-                }),
-
-                // Authority Information Access
-                self.ca_issuer.as_ref().map(|uri| {
-                    encode_extension(
-                    &oid::PE_AUTHORITY_INFO_ACCESS, false,
-                        encode::sequence(
-                            encode::sequence((
+                    }),
+                    // Key Usage
+                    encode_extension(&oid::CE_KEY_USAGE, true, self.key_usage.encode()),
+                    // Extended Key Usage
+                    self.extended_key_usage.as_ref().map(|captured| {
+                        encode_extension(
+                            &oid::CE_EXTENDED_KEY_USAGE,
+                            false,
+                            encode::sequence(captured),
+                        )
+                    }),
+                    // CRL Distribution Points
+                    self.crl_uri.as_ref().map(|uri| {
+                        encode_extension(
+                            &oid::CE_CRL_DISTRIBUTION_POINTS,
+                            false,
+                            encode::sequence(
+                                // CRLDistributionPoints
+                                encode::sequence(
+                                    // DistributionPoint
+                                    encode::sequence_as(
+                                        Tag::CTX_0, // distrib.Pt.
+                                        encode::sequence_as(
+                                            Tag::CTX_0, // fullName
+                                            uri.encode_general_name(),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        )
+                    }),
+                    // Authority Information Access
+                    self.ca_issuer.as_ref().map(|uri| {
+                        encode_extension(
+                            &oid::PE_AUTHORITY_INFO_ACCESS,
+                            false,
+                            encode::sequence(encode::sequence((
                                 oid::AD_CA_ISSUERS.encode(),
-                                uri.encode_general_name()
-                            ))
+                                uri.encode_general_name(),
+                            ))),
                         )
-                    )
-                }),
-
-                // Subject Information Access
-                encode_extension(
-                    &oid::PE_SUBJECT_INFO_ACCESS, false,
-                    encode::sequence((
-                        self.ca_repository.as_ref().map(|uri| {
-                            encode::sequence((
-                                oid::AD_CA_REPOSITORY.encode(),
-                                uri.encode_general_name()
-                            ))
-                        }),
-                        self.rpki_manifest.as_ref().map(|uri| {
-                            encode::sequence((
-                                oid::AD_RPKI_MANIFEST.encode(),
-                                uri.encode_general_name()
-                            ))
-                        }),
-                        self.signed_object.as_ref().map(|uri| {
-                            encode::sequence((
-                                oid::AD_SIGNED_OBJECT.encode(),
-                                uri.encode_general_name()
-                            ))
-                        }),
-                        self.rpki_notify.as_ref().map(|uri| {
-                            encode::sequence((
-                                oid::AD_RPKI_NOTIFY.encode(),
-                                uri.encode_general_name()
-                            ))
-                        })
-                    ))
-                ),
-
-                // Certificate Policies
-                encode_extension(
-                    &oid::CE_CERTIFICATE_POLICIES, true,
-                    encode::sequence(
-                        encode::sequence(
-                            self.overclaim.policy_id().encode()
-                            // policyQualifiers sequence is optional
-                        )
-                    )
-                ),
-
-                // IP Resources
-                IpResources::encode_extension(
-                    self.overclaim(),
-                    &self.v4_resources(),
-                    &self.v6_resources()
-                ),
-
-                // AS Resources
-                self.as_resources.encode_extension(self.overclaim)
-            )))
+                    }),
+                    // Subject Information Access
+                    encode_extension(
+                        &oid::PE_SUBJECT_INFO_ACCESS,
+                        false,
+                        encode::sequence((
+                            self.ca_repository.as_ref().map(|uri| {
+                                encode::sequence((
+                                    oid::AD_CA_REPOSITORY.encode(),
+                                    uri.encode_general_name(),
+                                ))
+                            }),
+                            self.rpki_manifest.as_ref().map(|uri| {
+                                encode::sequence((
+                                    oid::AD_RPKI_MANIFEST.encode(),
+                                    uri.encode_general_name(),
+                                ))
+                            }),
+                            self.signed_object.as_ref().map(|uri| {
+                                encode::sequence((
+                                    oid::AD_SIGNED_OBJECT.encode(),
+                                    uri.encode_general_name(),
+                                ))
+                            }),
+                            self.rpki_notify.as_ref().map(|uri| {
+                                encode::sequence((
+                                    oid::AD_RPKI_NOTIFY.encode(),
+                                    uri.encode_general_name(),
+                                ))
+                            }),
+                            encode::iter(self.additional_sias.iter().map(|(oid, uri)| {
+                                encode::sequence((oid.encode(), uri.encode_ref_as(Tag::CTX_6)))
+                            })),
+                        )),
+                    ),
+                    // Certificate Policies
+                    encode_extension(
+                        &oid::CE_CERTIFICATE_POLICIES,
+                        true,
+                        encode::sequence(encode::sequence(
+                            self.overclaim.policy_id().encode(), // policyQualifiers sequence is optional
+                        )),
+                    ),
+                    // IP Resources
+                    IpResources::encode_extension(
+                        self.overclaim(),
+                        &self.v4_resources(),
+                        &self.v6_resources(),
+                    ),
+                    // AS Resources
+                    self.as_resources.encode_extension(self.overclaim),
+                )),
+            ),
         ))
     }
 }
-
 
 //------------ Helpers for Decoding and Encoding -----------------------------
 
@@ -1765,15 +1688,17 @@ impl TbsCert {
 /// where the closure returns successfully, that’s an error, too.
 fn take_general_names_content<S: decode::Source, F, T, E>(
     cons: &mut decode::Constructed<S>,
-    mut op: F
+    mut op: F,
 ) -> Result<T, S::Err>
-where F: FnMut(Bytes) -> Result<T, E> {
+where
+    F: FnMut(Bytes) -> Result<T, E>,
+{
     let mut res = None;
     while let Some(()) = cons.take_opt_value_if(Tag::CTX_6, |content| {
         let uri = Ia5String::from_content(content)?;
         if let Ok(uri) = op(uri.into_bytes()) {
             if res.is_some() {
-                return Err(decode::Malformed.into())
+                return Err(decode::Malformed.into());
             }
             res = Some(uri)
         }
@@ -1781,19 +1706,19 @@ where F: FnMut(Bytes) -> Result<T, E> {
     })? {}
     match res {
         Some(res) => Ok(res),
-        None => Err(decode::Malformed.into())
+        None => Err(decode::Malformed.into()),
     }
 }
 
 fn take_general_name<S: decode::Source, F, T, E>(
     cons: &mut decode::Constructed<S>,
-    mut op: F
+    mut op: F,
 ) -> Result<Option<T>, S::Err>
-where F: FnMut(Bytes) -> Result<T, E> {
+where
+    F: FnMut(Bytes) -> Result<T, E>,
+{
     cons.take_value_if(Tag::CTX_6, |content| {
-        Ia5String::from_content(content).map(|uri| {
-            op(uri.into_bytes()).ok()
-        })
+        Ia5String::from_content(content).map(|uri| op(uri.into_bytes()).ok())
     })
 }
 
@@ -1817,7 +1742,6 @@ impl Sia {
         self.rpki_notify.as_ref()
     }
 }
-
 
 //------------ ResourceCert --------------------------------------------------
 
@@ -1875,7 +1799,6 @@ impl ResourceCert {
     }
 }
 
-
 //--- Deref and AsRef
 
 impl ops::Deref for ResourceCert {
@@ -1897,7 +1820,6 @@ impl AsRef<TbsCert> for ResourceCert {
         self.as_cert().as_ref()
     }
 }
-
 
 //------------ KeyUsage ------------------------------------------------------
 
@@ -1921,7 +1843,6 @@ impl KeyUsage {
         s.encode_as(Tag::BIT_STRING)
     }
 }
-
 
 //------------ Overclaim -----------------------------------------------------
 
@@ -1953,11 +1874,9 @@ impl Overclaim {
     fn from_policy(oid: &Oid) -> Result<Self, decode::Error> {
         if oid == &oid::CP_IPADDR_ASNUMBER {
             Ok(Overclaim::Refuse)
-        }
-        else if oid == &oid::CP_IPADDR_ASNUMBER_V2 {
+        } else if oid == &oid::CP_IPADDR_ASNUMBER_V2 {
             Ok(Overclaim::Trim)
-        }
-        else {
+        } else {
             xerr!(Err(decode::Malformed))
         }
     }
@@ -1965,11 +1884,9 @@ impl Overclaim {
     fn from_ip_res(oid: &Oid) -> Option<Self> {
         if oid == &oid::PE_IP_ADDR_BLOCK {
             Some(Overclaim::Refuse)
-        }
-        else if oid == &oid::PE_IP_ADDR_BLOCK_V2 {
+        } else if oid == &oid::PE_IP_ADDR_BLOCK_V2 {
             Some(Overclaim::Trim)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -1977,11 +1894,9 @@ impl Overclaim {
     fn from_as_res(oid: &Oid) -> Option<Self> {
         if oid == &oid::PE_AUTONOMOUS_SYS_IDS {
             Some(Overclaim::Refuse)
-        }
-        else if oid == &oid::PE_AUTONOMOUS_SYS_IDS_V2 {
+        } else if oid == &oid::PE_AUTONOMOUS_SYS_IDS_V2 {
             Some(Overclaim::Trim)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -1989,25 +1904,24 @@ impl Overclaim {
     pub fn policy_id(self) -> &'static ConstOid {
         match self {
             Overclaim::Refuse => &oid::CP_IPADDR_ASNUMBER,
-            Overclaim::Trim => &oid::CP_IPADDR_ASNUMBER_V2
+            Overclaim::Trim => &oid::CP_IPADDR_ASNUMBER_V2,
         }
     }
 
     pub fn ip_res_id(self) -> &'static ConstOid {
         match self {
             Overclaim::Refuse => &oid::PE_IP_ADDR_BLOCK,
-            Overclaim::Trim => &oid::PE_IP_ADDR_BLOCK_V2
+            Overclaim::Trim => &oid::PE_IP_ADDR_BLOCK_V2,
         }
     }
 
     pub fn as_res_id(self) -> &'static ConstOid {
         match self {
             Overclaim::Refuse => &oid::PE_AUTONOMOUS_SYS_IDS,
-            Overclaim::Trim => &oid::PE_AUTONOMOUS_SYS_IDS_V2
+            Overclaim::Trim => &oid::PE_AUTONOMOUS_SYS_IDS_V2,
         }
     }
 }
-
 
 //============ Tests =========================================================
 
@@ -2017,12 +1931,8 @@ mod test {
 
     #[test]
     fn decode_certs() {
-        Cert::decode(
-            include_bytes!("../../test-data/ta.cer").as_ref()
-        ).unwrap();
-        Cert::decode(
-            include_bytes!("../../test-data/ca1.cer").as_ref()
-        ).unwrap();
+        Cert::decode(include_bytes!("../../test-data/ta.cer").as_ref()).unwrap();
+        Cert::decode(include_bytes!("../../test-data/ca1.cer").as_ref()).unwrap();
     }
 
     #[test]
@@ -2033,21 +1943,22 @@ mod test {
         let serialize = serde_json::to_string(&cert).unwrap();
         let des_cert: Cert = serde_json::from_str(&serialize).unwrap();
 
-        assert_eq!(cert.to_captured().into_bytes(), des_cert.to_captured().into_bytes());
-
+        assert_eq!(
+            cert.to_captured().into_bytes(),
+            des_cert.to_captured().into_bytes()
+        );
     }
 }
 
-#[cfg(all(test, feature="softkeys"))]
+#[cfg(all(test, feature = "softkeys"))]
 mod signer_test {
-    use std::str::FromStr;
+    use super::*;
     use crate::cert::Cert;
-    use crate::crypto::PublicKeyFormat;
     use crate::crypto::softsigner::OpenSslSigner;
+    use crate::crypto::PublicKeyFormat;
     use crate::resources::{AsId, Prefix};
     use crate::tal::TalInfo;
-    use super::*;
-
+    use std::str::FromStr;
 
     #[test]
     fn build_ta_cert() {
@@ -2056,9 +1967,13 @@ mod signer_test {
         let pubkey = signer.get_key_info(&key).unwrap();
         let uri = uri::Rsync::from_str("rsync://example.com/m/p").unwrap();
         let mut cert = TbsCert::new(
-            12u64.into(), pubkey.to_subject_name(),
-            Validity::from_secs(86400), None, pubkey, KeyUsage::Ca,
-            Overclaim::Trim
+            12u64.into(),
+            pubkey.to_subject_name(),
+            Validity::from_secs(86400),
+            None,
+            pubkey,
+            KeyUsage::Ca,
+            Overclaim::Trim,
         );
         cert.set_basic_ca(Some(true));
         cert.set_ca_repository(Some(uri.clone()));
@@ -2072,4 +1987,3 @@ mod signer_test {
         cert.validate_ta(talinfo, true).unwrap();
     }
 }
-
