@@ -389,6 +389,13 @@ impl ChildRequest {
     }
 }
 
+//--- Display
+
+impl fmt::Display for ChildRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_xml_string())
+    }
+}
 
 //------------ ParentResponse ------------------------------------------------
 
@@ -614,6 +621,13 @@ impl ParentResponse {
     }    
 }
 
+//--- Display
+
+impl fmt::Display for ParentResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_xml_string())
+    }
+}
 
 //------------ PublisherRequest ----------------------------------------------
 
@@ -770,6 +784,13 @@ impl PublisherRequest {
     }
 }
 
+//--- Display
+
+impl fmt::Display for PublisherRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_xml_string())
+    }
+}
 
 //------------ RepositoryResponse --------------------------------------------
 
@@ -986,6 +1007,13 @@ impl RepositoryResponse {
     }
 }
 
+//--- Display
+
+impl fmt::Display for RepositoryResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_xml_string())
+    }
+}
 
 //------------ Tests ---------------------------------------------------------
 

@@ -400,12 +400,9 @@ impl IssuanceRequest {
 }
 
 /// # Encode to XML
-/// 
+///
 impl IssuanceRequest {
-    fn write_xml<W: io::Write>(
-        &self,
-        content: &mut encode::Content<W>
-    ) -> Result<(), io::Error> {
+    fn write_xml<W: io::Write>(&self, content: &mut encode::Content<W>) -> Result<(), io::Error> {
         content
             .element("request".into())?
             .attr("class_name", self.class_name())?
@@ -456,7 +453,6 @@ impl fmt::Display for IssuanceRequest {
     }
 }
 
-
 //------------ IssuanceResponse ----------------------------------------------
 
 /// A Certificate Issuance Response equivalent to the one defined in
@@ -501,7 +497,6 @@ impl IssuanceResponse {
     }
 }
 
-
 //------------ ResourceSet ---------------------------------------------------
 
 /// A set of ASN, IPv4 and IPv6 resources. In the context of resource
@@ -519,7 +514,21 @@ pub struct ResourceSet {
 }
 
 impl ResourceSet {
-    pub fn new() -> ResourceSet {
+    pub fn new(asn: AsBlocks, ipv4: Ipv4Blocks, ipv6: Ipv6Blocks) -> Self {
+        ResourceSet { asn, ipv4, ipv6 }
+    }
+
+    pub fn from_strs(
+        asn: &str, ipv4: &str, ipv6: &str
+    ) -> Result<Self, ResourceSetError> {
+        let asn = AsBlocks::from_str(asn).map_err(ResourceSetError::new)?;
+        let ipv4 = Ipv4Blocks::from_str(ipv4).map_err(ResourceSetError::new)?;
+        let ipv6 = Ipv6Blocks::from_str(ipv6).map_err(ResourceSetError::new)?;
+
+        Ok(ResourceSet { asn, ipv4, ipv6 })
+    }
+
+    pub fn empty() -> ResourceSet {
         Self::default()
     }
 
@@ -542,11 +551,11 @@ impl ResourceSet {
     pub fn asn(&self) -> &AsBlocks {
         &self.asn
     }
-    
+
     pub fn ipv4(&self) -> &Ipv4Blocks {
         &self.ipv4
     }
-    
+
     pub fn ipv6(&self) -> &Ipv6Blocks {
         &self.ipv6
     }
@@ -589,7 +598,6 @@ impl Default for ResourceSet {
     }
 }
 
-
 //--- Display
 
 impl fmt::Display for ResourceSet {
@@ -621,6 +629,78 @@ impl fmt::Display for ResourceSet {
     }
 }
 
+//------------ ResourceSetError ----------------------------------------------
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResourceSetError(String);
+
+impl ResourceSetError {
+    pub fn new(s: impl fmt::Display) -> Self {
+        ResourceSetError(s.to_string())
+    }
+}
+
+impl fmt::Display for ResourceSetError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+//------------ RequestResourceLimit ------------------------------------------
+
+/// The scope of resources that a child CA wants to have certified. By default
+/// there are no limits, i.e. all the child wants all resources the parent is
+/// willing to give. Only if some values are specified for certain resource
+/// types will the scope be limited for that type only.
+///
+/// In other words it is possible to have no limit for a resource type using
+/// [`None`], but it's also possible to ask for an empty set of resources for
+/// one of the types.
+///
+/// Note that the IssuanceRequest will be rejected by the parent, if the limit
+/// exceeds the child's entitlements.
+///
+/// See: https://tools.ietf.org/html/rfc6492#section-3.4.1
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RequestResourceLimit {
+    asn: Option<AsBlocks>,
+    v4: Option<Ipv4Blocks>,
+    v6: Option<Ipv6Blocks>,
+}
+
+impl RequestResourceLimit {
+    pub fn new() -> RequestResourceLimit {
+        Self::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.asn == None && self.v4 == None && self.v6 == None
+    }
+
+    pub fn with_asn(&mut self, asn: AsBlocks) {
+        self.asn = Some(asn);
+    }
+
+    pub fn with_ipv4(&mut self, ipv4: Ipv4Blocks) {
+        self.v4 = Some(ipv4);
+    }
+
+    pub fn with_ipv6(&mut self, ipv6: Ipv6Blocks) {
+        self.v6 = Some(ipv6);
+    }
+
+    pub fn asn(&self) -> Option<&AsBlocks> {
+        self.asn.as_ref()
+    }
+
+    pub fn v4(&self) -> Option<&Ipv4Blocks> {
+        self.v4.as_ref()
+    }
+
+    pub fn v6(&self) -> Option<&Ipv6Blocks> {
+        self.v6.as_ref()
+    }
+}
 
 //------------ RevocationRequest ---------------------------------------------
 
@@ -632,7 +712,7 @@ pub struct RevocationRequest(KeyElement);
 impl RevocationRequest {
     pub fn new(class_name: ResourceClassName, key: KeyIdentifier) -> Self {
         RevocationRequest(KeyElement { class_name, key })
-    } 
+    }
 
     pub fn unpack(self) -> (ResourceClassName, KeyIdentifier) {
         (self.0.class_name, self.0.key)
@@ -657,7 +737,6 @@ impl Deref for RevocationRequest {
         &self.0
     }
 }
-
 
 //------------ RevocationResponse --------------------------------------------
 
@@ -684,7 +763,6 @@ impl Deref for RevocationResponse {
         &self.0
     }
 }
-
 
 //------------ KeyElement ----------------------------------------------------
 
@@ -759,7 +837,6 @@ impl KeyElement {
         Ok(KeyElement { class_name, key })
     }
 }
-
 
 /// # Encode to XML
 /// 
@@ -1073,7 +1150,6 @@ impl ResourceClassEntitlements {
     }
 }
 
-
 //------------ NotPerformedResponse ------------------------------------------
 
 /// This type describes the Not-performed responses defined in section 3.6
@@ -1110,7 +1186,7 @@ impl NotPerformedResponse {
 
     /// Unrecognised request type
     pub fn err_1103() -> Self {
-        Self::new( 1103, "unrecognized request type")
+        Self::new(1103, "unrecognized request type")
     }
 
     /// Request scheduled for processing
@@ -1120,7 +1196,7 @@ impl NotPerformedResponse {
 
     /// No such resource class
     pub fn err_1201() -> Self {
-        Self::new( 1201, "request - no such resource class")
+        Self::new(1201, "request - no such resource class")
     }
 
     /// No resources in resource class
@@ -1155,14 +1231,14 @@ impl NotPerformedResponse {
 }
 
 /// XML Support
-/// 
+///
 impl NotPerformedResponse {
     /// Decodes an RFC 6492 section 3.6 Request-Not-Performed-Response.
-    /// 
+    ///
     /// XML format of the content is:
     ///   <status>[Code]</status>
     ///   <description xml:lang="en-US">[Readable text]</description>
-    /// 
+    ///
     /// Note that 'xml:lang="en-US"' MUST be present if the optional
     /// <description /> element is present and cannot have any other
     /// value.
@@ -1170,21 +1246,20 @@ impl NotPerformedResponse {
         content: &mut Content,
         reader: &mut xml::decode::Reader<R>,
     ) -> Result<Self, Error> {
-        
-        let mut status_element = content.take_element(reader, |element|
+        let mut status_element = content.take_element(reader, |element| {
             if element.name().local() != b"status" {
                 Err(XmlError::Malformed)
             } else {
                 Ok(())
             }
-        )?;
-        
-        let status = status_element.take_text(reader, |text|
+        })?;
+
+        let status = status_element.take_text(reader, |text| {
             u64::from_str(&text.to_ascii()?).map_err(|_| XmlError::Malformed)
-        )?;
-        
+        })?;
+
         status_element.take_end(reader)?;
-        
+
         let mut description = None;
         if let Some(mut element) = content.take_opt_element(reader, |element| {
             if element.name().local() != b"description" {
@@ -1201,7 +1276,7 @@ impl NotPerformedResponse {
 
             element.take_end(reader)?;
         }
-        
+
         Ok(NotPerformedResponse { status, description})
     }
 
@@ -1231,10 +1306,8 @@ impl fmt::Display for NotPerformedResponse {
             None => write!(f, "{}", self.status),
             Some(d) => write!(f, "{} - {}", self.status, d),
         }
-        
     }
 }
-
 
 //------------ IssuedCert ----------------------------------------------------
 
@@ -1243,16 +1316,13 @@ impl fmt::Display for NotPerformedResponse {
 pub struct IssuedCert {
     url: uri::Rsync,
     req_limit: ResourceSet,
-    cert: Cert
+    cert: Cert,
 }
 
 /// # Encode to XML
-/// 
+///
 impl IssuedCert {
-    fn write_xml<W: io::Write>(
-        &self,
-        content: &mut encode::Content<W>
-    ) -> Result<(), io::Error> {
+    fn write_xml<W: io::Write>(&self, content: &mut encode::Content<W>) -> Result<(), io::Error> {
         content
             .element("certificate".into())?
             .attr("cert_url", &self.url)?
@@ -1279,7 +1349,6 @@ impl PartialEq for IssuedCert {
 
 impl Eq for IssuedCert {}
 
-
 //------------ SigningCert ---------------------------------------------------
 
 /// Represents the parent CA certificate used to sign child certificates in
@@ -1300,7 +1369,6 @@ impl PartialEq for SigningCert {
 }
 
 impl Eq for SigningCert {}
-
 
 //------------ ResourceClassName ---------------------------------------------
 
@@ -1378,7 +1446,6 @@ impl<'de> Deserialize<'de> for ResourceClassName {
     }
 }
 
-
 //------------ ProvisioningMessageError --------------------------------------
 
 #[derive(Debug)]
@@ -1418,14 +1485,13 @@ impl From<PayloadTypeError> for Error {
     }
 }
 
-
 //------------ Tests ---------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
 
-    use std::str::from_utf8_unchecked;
     use crate::remote::sigmsg::SignedMessage;
+    use std::str::from_utf8_unchecked;
 
     use super::*;
 
