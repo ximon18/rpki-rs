@@ -11,6 +11,45 @@ Bug Fixes
 Other Changes
 
 
+## 0.14.2
+
+Released 2022-02-10.
+
+New
+
+* Added `Display` impl to `rtr::pdu::RouterKeyInfo`. It outputs the key in
+  Base 64 as used by [RFC 8416] local exception files. ([#187])
+* Added `repository::roa::RouteOriginAttestation::iter_origins` that
+  iterates over the content as `rtr::payload::RouteOrigins`. ([#188])
+* Dropped the `non_exhaustive` attribute from `rtr::payload::Payload`.
+  ([#189])
+* Added `repository::crypto::keys::PublicKey::bit_bytes` which returns
+  the key’s bits as a shareable `Bytes` value. ([#193])
+* Added iterators over individual ASNs to
+  `repository::resources::AsBlock` and `repository::resources::AsBlocks`.
+  ([#194])
+
+Bug Fixes
+
+* Added a check to manifest validation that _thisUpdate_ is before
+  _nextUpdate_ as mandated by [RFC 6486]. ([#191])
+* `rtr::payload::RouteOrigin` now compares considering a missing max
+  length equal to a max length set to the prefix length. This is necessary
+  to filter out duplicates in RTR where max len is always given. ([#195])
+* The RTR client and server now flush their sockets before waiting. This
+  is necessary for TLS support where data is buffered. ([#196])
+
+[#187]: https://github.com/NLnetLabs/rpki-rs/pull/187
+[#188]: https://github.com/NLnetLabs/rpki-rs/pull/188
+[#189]: https://github.com/NLnetLabs/rpki-rs/pull/189
+[#191]: https://github.com/NLnetLabs/rpki-rs/pull/191
+[#193]: https://github.com/NLnetLabs/rpki-rs/pull/193
+[#194]: https://github.com/NLnetLabs/rpki-rs/pull/194
+[#195]: https://github.com/NLnetLabs/rpki-rs/pull/195
+[#196]: https://github.com/NLnetLabs/rpki-rs/pull/196
+[RFC 6486]: https://tools.ietf.org/html/rfc6486
+
+
 ## 0.14.1
 
 Released 2022-01-11.

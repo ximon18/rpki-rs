@@ -11,7 +11,7 @@ use futures_util::future;
 use futures_util::pin_mut;
 use futures_util::future::Either;
 use log::debug;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::broadcast;
 use tokio::task::spawn;
 use tokio_stream::{Stream, StreamExt};
@@ -401,6 +401,7 @@ impl<Sock: Socket, Source: PayloadSource> Connection<Sock, Source> {
                 pdu::EndOfData::new(
                     self.version(), state, timing
                 ).write(&mut self.sock).await?;
+                self.sock.flush().await?;
                 self.sock.update(state, true);
                 Ok(())
             }
@@ -413,7 +414,7 @@ impl<Sock: Socket, Source: PayloadSource> Connection<Sock, Source> {
         }
     }
 
-    /// Sends out a sesponse to a reset query.
+    /// Sends out a response to a reset query.
     ///
     /// Responds accordingly based on whether or not the source is ready.
     /// Only returns an error if writing to the socket fails.
@@ -436,6 +437,7 @@ impl<Sock: Socket, Source: PayloadSource> Connection<Sock, Source> {
         pdu::EndOfData::new(
             self.version(), state, timing
         ).write(&mut self.sock).await?;
+        self.sock.flush().await?;
         self.sock.update(state, true);
         Ok(())
     }
@@ -444,7 +446,8 @@ impl<Sock: Socket, Source: PayloadSource> Connection<Sock, Source> {
     async fn error(
         &mut self, err: pdu::Error
     ) -> Result<(), io::Error> {
-        err.write(&mut self.sock).await
+        err.write(&mut self.sock).await?;
+        self.sock.flush().await
     }
 
     /// Sends a serial notify query.
